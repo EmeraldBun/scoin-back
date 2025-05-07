@@ -4,8 +4,9 @@ const jwt = require('jsonwebtoken')
 const pool = require('./db')
 const router = express.Router()
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
-const multer = require('multer')
 const path = require('path')
+const multer = require('multer')
+const upload = multer({ dest: 'uploads/' }); // или настрой по своему пути
 
 // Папка для загрузки
 const storage = multer.diskStorage({
@@ -419,17 +420,17 @@ router.patch('/casino/symbols', auth, async (req, res) => {
 })
 
 // Добавление символа казино
-router.post('/casino/symbols', async (req, res) => {
-  const { name, multiplier, chance } = req.body;
+router.post('/casino/symbols', auth, async (req, res) => {
+  const { icon, multiplier, weight } = req.body;
 
-  if (!name || isNaN(multiplier) || isNaN(chance)) {
+  if (!icon || isNaN(multiplier) || isNaN(weight)) {
     return res.status(400).json({ error: 'Некорректные данные' });
   }
 
   try {
     await pool.query(
-      'INSERT INTO casino_symbols (name, multiplier, chance) VALUES ($1, $2, $3)',
-      [name, multiplier, chance]
+      'INSERT INTO casino_symbols (icon, multiplier, weight) VALUES ($1, $2, $3)',
+      [icon, multiplier, weight]
     );
     res.status(201).json({ message: 'Символ добавлен' });
   } catch (err) {
@@ -437,5 +438,6 @@ router.post('/casino/symbols', async (req, res) => {
     res.status(500).json({ error: 'Ошибка добавления символа' });
   }
 });
+
 
 module.exports = router
