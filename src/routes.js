@@ -21,19 +21,6 @@ const storage = multer.diskStorage({
 const upload = multer({ storage })
 
 
-// 🔐 Проверка токена
-const auth = (req, res, next) => {
-  const authHeader = req.headers.authorization
-  if (!authHeader) return res.sendStatus(401)
-  const token = authHeader.split(' ')[1]
-  try {
-    req.user = jwt.verify(token, SECRET)
-    next()
-  } catch (e) {
-    res.sendStatus(403)
-  }
-}
-
 // 👉 Регистрация (только для админа)
 router.post('/register', async (req, res) => {
   let { login, password, name, is_admin, role } = req.body
