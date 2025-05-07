@@ -6,6 +6,8 @@ const router = express.Router()
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
 const path = require('path')
 const multer = require('multer')
+const auth = require('./middleware/auth');
+
 
 // Папка для загрузки
 const storage = multer.diskStorage({
@@ -312,6 +314,18 @@ router.post('/avatar', auth, upload.single('avatar'), (req, res) => {
   const url = `/uploads/${req.file.filename}`;
   res.json({ url });
 });
+
+router.get('/me', auth, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const user = await pool.query('SELECT id, login, name, balance, is_admin, avatar_url, role FROM users WHERE id = $1', [userId]);
+    res.json(user.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка загрузки профиля' });
+  }
+});
+
 
 
 module.exports = router
