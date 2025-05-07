@@ -1,5 +1,5 @@
 const express = require('express')
-const bcrypt = require('bcryptjs')
+const bcrypt = require('bcryptjs') // вместо bcrypt
 const jwt = require('jsonwebtoken')
 const pool = require('./db')
 const router = express.Router()
@@ -417,5 +417,25 @@ router.patch('/casino/symbols', auth, async (req, res) => {
     client.release()
   }
 })
+
+// Добавление символа казино
+router.post('/casino/symbols', async (req, res) => {
+  const { name, multiplier, chance } = req.body;
+
+  if (!name || isNaN(multiplier) || isNaN(chance)) {
+    return res.status(400).json({ error: 'Некорректные данные' });
+  }
+
+  try {
+    await pool.query(
+      'INSERT INTO casino_symbols (name, multiplier, chance) VALUES ($1, $2, $3)',
+      [name, multiplier, chance]
+    );
+    res.status(201).json({ message: 'Символ добавлен' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка добавления символа' });
+  }
+});
 
 module.exports = router
