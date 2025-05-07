@@ -253,51 +253,56 @@ router.patch('/users/:id', auth, async (req, res) => {
   }
 })
 
-router.patch('/me/name', auth, async (req, res) => {
-  const userId = req.user.id;
-  const { name } = req.body;
 
-  if (!name || name.trim() === '') {
-    return res.status(400).json({ error: 'Имя не может быть пустым' });
+// 📄 Профиль
+router.get('/me', auth, async (req, res) => {
+  const userId = req.user.id
+  try {
+    const user = await pool.query('SELECT id, login, name, balance, is_admin, avatar_url, role FROM users WHERE id = $1', [userId])
+    res.json(user.rows[0])
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка загрузки профиля' })
   }
+})
+
+// ✏️ Обновление имени
+router.patch('/users/:id', auth, async (req, res) => {
+  const { id } = req.params
+  const { name } = req.body
 
   try {
     const result = await pool.query(
-      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, balance, role',
-      [name.trim(), userId]
-    );
-    res.json(result.rows[0]);
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, balance, is_admin, role',
+      [name, id]
+    )
+    res.json(result.rows[0])
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Ошибка обновления имени' });
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка обновления имени' })
   }
-});
+})
 
-router.patch('/me/password', auth, async (req, res) => {
-  const userId = req.user.id;
-  const { currentPassword, newPassword } = req.body;
-
-  if (!currentPassword || !newPassword) {
-    return res.status(400).json({ error: 'Заполните оба поля' });
-  }
+// 🔒 Обновление пароля
+router.patch('/users/:id/password', auth, async (req, res) => {
+  const { id } = req.params
+  const { currentPassword, newPassword } = req.body
 
   try {
-    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
-    const user = userRes.rows[0];
+    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [id])
+    const user = userRes.rows[0]
 
-    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+    const isMatch = await bcrypt.compare(currentPassword, user.password_hash)
+    if (!isMatch) return res.status(401).json({ error: 'Неверный текущий пароль' })
 
-    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isMatch) return res.status(401).json({ error: 'Неверный текущий пароль' });
+    const newHash = await bcrypt.hash(newPassword, 10)
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, id])
 
-    const newHash = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
-
-    res.json({ message: 'Пароль обновлён' });
+    res.json({ message: 'Пароль обновлён' })
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Ошибка при смене пароля' });
+    console.error(err)
+    res.status(500).json({ error: 'Ошибка смены пароля' })
   }
-});
+})
 
 module.exports = router
