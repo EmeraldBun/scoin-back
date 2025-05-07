@@ -253,66 +253,51 @@ router.patch('/users/:id', auth, async (req, res) => {
   }
 })
 
-// 🔒 Смена пароля
-router.patch('/users/:id/password', auth, async (req, res) => {
-  const userId = parseInt(req.params.id, 10)
-  const { current_password, new_password } = req.body
-
-  // Проверяем: только владелец может менять свой пароль
-  if (req.user.id !== userId) {
-    return res.status(403).json({ error: 'Forbidden' })
-  }
-
-  try {
-    // Получаем хеш текущего пароля
-    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId])
-    const user = userRes.rows[0]
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
-    }
-
-    const isMatch = await bcrypt.compare(current_password, user.password_hash)
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Неверный текущий пароль' })
-    }
-
-    const newHash = await bcrypt.hash(new_password, 10)
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId])
-
-    res.json({ message: 'Пароль обновлён' })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Ошибка при смене пароля' })
-  }
-})
-
-// 📤 Загрузка аватарки
-router.post('/upload', auth, upload.single('avatar'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Файл не загружен' })
-
-  const url = `/uploads/${req.file.filename}`
-  res.json({ url })
-})
-
-router.post('/avatar', auth, upload.single('avatar'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
-
-  const url = `/uploads/${req.file.filename}`;
-  res.json({ url });
-});
-
-router.get('/me', auth, async (req, res) => {
+router.patch('/me/name', auth, async (req, res) => {
   const userId = req.user.id;
+  const { name } = req.body;
+
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: 'Имя не может быть пустым' });
+  }
+
   try {
-    const user = await pool.query('SELECT id, login, name, balance, is_admin, avatar_url, role FROM users WHERE id = $1', [userId]);
-    res.json(user.rows[0]);
+    const result = await pool.query(
+      'UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, balance, role',
+      [name.trim(), userId]
+    );
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Ошибка загрузки профиля' });
+    res.status(500).json({ error: 'Ошибка обновления имени' });
   }
 });
 
+router.patch('/me/password', auth, async (req, res) => {
+  const userId = req.user.id;
+  const { currentPassword, newPassword } = req.body;
 
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Заполните оба поля' });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [userId]);
+    const user = userRes.rows[0];
+
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!isMatch) return res.status(401).json({ error: 'Неверный текущий пароль' });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, userId]);
+
+    res.json({ message: 'Пароль обновлён' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка при смене пароля' });
+  }
+});
 
 module.exports = router
