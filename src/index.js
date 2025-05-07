@@ -19,7 +19,7 @@ app.use(express.json());
 app.use(express.json());
 
 // Подключаем все маршруты под префиксом /api
-app.use('/api', routes);
+app.use('/api', require('./routes'));
 
 app.use('/uploads', express.static('uploads'))
 
