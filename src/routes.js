@@ -6,7 +6,6 @@ const router = express.Router()
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
 const path = require('path')
 const multer = require('multer')
-const upload = multer({ dest: 'uploads/' }); // или настрой по своему пути
 
 // Папка для загрузки
 const storage = multer.diskStorage({
