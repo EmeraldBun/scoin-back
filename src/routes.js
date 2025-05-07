@@ -138,42 +138,50 @@ router.delete('/items/:id', auth, async (req, res) => {
 
 // 🛒 Покупка товара
 router.post('/buy', auth, async (req, res) => {
-  const { item_id } = req.body
-  const user_id = req.user.id
+  const { item_id } = req.body;
+  const user_id = req.user.id;
+
+  const axios = require('axios'); // убедись, что установлен: npm install axios
+  const TELEGRAM_TOKEN = process.env.TG_BOT_TOKEN;
+  const CHAT_ID = process.env.TG_CHAT_ID;
 
   try {
-    const itemRes = await pool.query('SELECT * FROM items WHERE id = $1', [item_id])
-    const item = itemRes.rows[0]
+    const itemRes = await pool.query('SELECT * FROM items WHERE id = $1', [item_id]);
+    const item = itemRes.rows[0];
 
-    if (!item) return res.status(404).json({ error: 'Товар не найден' })
+    if (!item) return res.status(404).json({ error: 'Товар не найден' });
 
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [user_id])
-    const user = userRes.rows[0]
+    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    const user = userRes.rows[0];
 
     if (user.balance < item.price) {
-      return res.status(400).json({ error: 'Недостаточно S-Coin' })
+      return res.status(400).json({ error: 'Недостаточно S-Coin' });
     }
 
-    await pool.query('BEGIN')
+    await pool.query('BEGIN');
 
-    await pool.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [item.price, user_id])
-
-    await pool.query('INSERT INTO purchases (user_id, item_id) VALUES ($1, $2)', [user_id, item_id])
-
+    await pool.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [item.price, user_id]);
+    await pool.query('INSERT INTO purchases (user_id, item_id) VALUES ($1, $2)', [user_id, item_id]);
     await pool.query(
       'INSERT INTO transactions (user_id, amount, reason) VALUES ($1, $2, $3)',
       [user_id, -item.price, `Покупка: ${item.name}`]
-    )
+    );
 
-    await pool.query('COMMIT')
+    // 🔔 Отправка уведомления в Telegram
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: CHAT_ID,
+      text: `${user.login} купил ${item.name}`
+    });
 
-    res.json({ message: 'Покупка успешна' })
+    await pool.query('COMMIT');
+
+    res.json({ message: 'Покупка успешна' });
   } catch (err) {
-    await pool.query('ROLLBACK')
-    console.error(err)
-    res.status(500).json({ error: 'Ошибка покупки' })
+    await pool.query('ROLLBACK');
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка покупки' });
   }
-})
+});
 
 // 📦 История покупок
 router.get('/my-purchases', auth, async (req, res) => {
