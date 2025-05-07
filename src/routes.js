@@ -306,5 +306,12 @@ router.post('/upload', auth, upload.single('avatar'), (req, res) => {
   res.json({ url })
 })
 
+router.post('/avatar', auth, upload.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
+
+  const url = `/uploads/${req.file.filename}`;
+  res.json({ url });
+});
+
 
 module.exports = router
