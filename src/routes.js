@@ -6,7 +6,7 @@ const router = express.Router()
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
 const path = require('path')
 const multer = require('multer')
-const auth = require('./middleware/auth');
+const auth = require('./authMiddleware');
 
 
 // Папка для загрузки
