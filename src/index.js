@@ -4,6 +4,10 @@ const dotenv = require('dotenv');
 const routes = require('./routes');
 const cors = require('cors');
 
+console.log('TG_BOT_TOKEN =', process.env.TG_BOT_TOKEN);
+console.log('TG_CHAT_ID   =', process.env.TG_CHAT_ID);
+
+
 
 
 

@@ -1,19 +1,24 @@
-// src/db.js
 const { Pool } = require('pg');
 require('dotenv').config();
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-})
+const isProd = process.env.NODE_ENV === 'production';
 
+const pool = new Pool(
+  isProd
+    ? {                           // Render / Railway
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      }
+    : {                           // локально
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME
+      }
+);
 
-pool.connect()
-  .then(() => console.log('📦 Подключено к базе данных PostgreSQL'))
-  .catch((err) => console.error('❌ Ошибка подключения к БД', err));
+pool.on('connect', () => console.log('📦  PostgreSQL connected'));
+pool.on('error',   e  => console.error('❌  DB error', e));
 
 module.exports = pool;

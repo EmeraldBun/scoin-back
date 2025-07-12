@@ -1,17 +1,17 @@
 {
-  "name": "scoin-backend",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node src/index.js"
+  "name": "nw-pre-gyp-module-test",
+  "version": "0.0.1",
+  "description": "Node-webkit-based module test.",
+  "main": "index.html",
+  "window": {
+    "show": false
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "NODE_ENV=production node src/index.js"
+  },
   "dependencies": {
-    "axios": "^1.9.0",
-    "bcrypt": "^5.1.1",
+    "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -19,5 +19,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2",
     "pg": "^8.15.6"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

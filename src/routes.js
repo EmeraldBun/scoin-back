@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs') // вместо bcrypt
 const jwt = require('jsonwebtoken')
 const pool = require('./db')
 const router = express.Router()
+const axios = require('axios');      // ← добавили один раз (удалите дубли ниже)
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
 const path = require('path')
 const multer = require('multer')
@@ -21,7 +22,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage })
 
 
-// 👉 Регистрация (только для админа)
+// 👉 Регистрация (только для админа)А
 router.post('/register', async (req, res) => {
   let { login, password, name, is_admin, role } = req.body
 role = role || 'Холодник' // значение по умолчанию
@@ -138,43 +139,69 @@ router.delete('/items/:id', auth, async (req, res) => {
 
 // 🛒 Покупка товара
 router.post('/buy', auth, async (req, res) => {
-  const { item_id } = req.body;
+  // принимаем оба варианта ключа из фронта
+  const itemId  = req.body.itemId || req.body.item_id;
   const user_id = req.user.id;
 
-  const axios = require('axios'); // убедись, что установлен: npm install axios
+  if (!itemId) {
+    return res.status(400).json({ error: 'itemId is required' });
+  }
+
   const TELEGRAM_TOKEN = process.env.TG_BOT_TOKEN;
-  const CHAT_ID = process.env.TG_CHAT_ID;
+  const CHAT_ID        = process.env.TG_CHAT_ID;
 
   try {
-    const itemRes = await pool.query('SELECT * FROM items WHERE id = $1', [item_id]);
+    /* ---------- Проверяем товар ---------- */
+    const itemRes = await pool.query(
+      'SELECT * FROM items WHERE id = $1',
+      [itemId]
+    );
     const item = itemRes.rows[0];
-
     if (!item) return res.status(404).json({ error: 'Товар не найден' });
 
-    const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    /* ---------- Проверяем пользователя ---------- */
+    const userRes = await pool.query(
+      'SELECT * FROM users WHERE id = $1',
+      [user_id]
+    );
     const user = userRes.rows[0];
-
     if (user.balance < item.price) {
       return res.status(400).json({ error: 'Недостаточно S-Coin' });
     }
 
+    /* ---------- Транзакция покупки ---------- */
     await pool.query('BEGIN');
 
-    await pool.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [item.price, user_id]);
-    await pool.query('INSERT INTO purchases (user_id, item_id) VALUES ($1, $2)', [user_id, item_id]);
+    // списываем баланс
+    await pool.query(
+      'UPDATE users SET balance = balance - $1 WHERE id = $2',
+      [item.price, user_id]
+    );
+
+    // записываем покупку
+    await pool.query(
+      'INSERT INTO purchases (user_id, item_id) VALUES ($1, $2)',
+      [user_id, itemId]
+    );
+
+    // логируем транзакцию
     await pool.query(
       'INSERT INTO transactions (user_id, amount, reason) VALUES ($1, $2, $3)',
       [user_id, -item.price, `Покупка: ${item.name}`]
     );
 
-    // 🔔 Отправка уведомления в Telegram
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      chat_id: CHAT_ID,
-      text: `${user.login} купил ${item.name}`
-    });
+    /* ---------- Telegram-уведомление (опционально) ---------- */
+    if (TELEGRAM_TOKEN && CHAT_ID) {
+      await axios.post(
+        `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`,
+        {
+          chat_id: CHAT_ID,
+          text: `${user.login} купил ${item.name}`,
+        }
+      );
+    }
 
     await pool.query('COMMIT');
-
     res.json({ message: 'Покупка успешна' });
   } catch (err) {
     await pool.query('ROLLBACK');
@@ -183,25 +210,6 @@ router.post('/buy', auth, async (req, res) => {
   }
 });
 
-// 📦 История покупок
-router.get('/my-purchases', auth, async (req, res) => {
-  const user_id = req.user.id
-
-  try {
-    const result = await pool.query(`
-      SELECT i.name, i.price, i.image_url, p.created_at
-      FROM purchases p
-      JOIN items i ON p.item_id = i.id
-      WHERE p.user_id = $1
-      ORDER BY p.created_at DESC
-    `, [user_id])
-
-    res.json(result.rows)
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Ошибка получения покупок' })
-  }
-})
 
 router.post('/register', auth, async (req, res) => {
   console.log(req.body) // для отладки
@@ -312,5 +320,31 @@ router.patch('/users/:id/password', auth, async (req, res) => {
     res.status(500).json({ error: 'Ошибка смены пароля' })
   }
 })
+
+
+/* =====================  История покупок текущего пользователя  ===================== */
+router.get('/my-purchases', auth, async (req, res) => {
+  const user_id = req.user.id;
+
+  try {
+    const result = await pool.query(
+      `SELECT i.id,
+              i.name,
+              i.price,
+              i.image_url,
+              p.created_at
+         FROM purchases p
+         JOIN items i ON p.item_id = i.id
+        WHERE p.user_id = $1
+        ORDER BY p.created_at DESC`,
+      [user_id]
+    );
+
+    res.json(result.rows);          // фронт ждёт именно массив
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Ошибка получения покупок' });
+  }
+});
 
 module.exports = router
