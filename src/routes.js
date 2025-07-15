@@ -3,17 +3,16 @@ const bcrypt = require('bcryptjs') // вместо bcrypt
 const jwt = require('jsonwebtoken')
 const pool = require('./db')
 const router = express.Router()
-const axios = require('axios');      // ← добавили один раз (удалите дубли ниже)
+const axios = require('axios')      // ← оставил 1 раз
 const SECRET = process.env.JWT_SECRET || 'scoin-secret'
 const path = require('path')
 const multer = require('multer')
-const auth = require('./authMiddleware');
+const auth = require('./authMiddleware')
 
-
-// Папка для загрузки
+/* ───── Папка для загрузки ───── */
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
+  destination: (_req, _file, cb) => cb(null, 'uploads/'),
+  filename: (_req, file, cb) => {
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9)
     const ext = path.extname(file.originalname)
     cb(null, `avatar-${unique}${ext}`)
@@ -21,15 +20,16 @@ const storage = multer.diskStorage({
 })
 const upload = multer({ storage })
 
-
-// 👉 Регистрация (только для админа)А
+// 👉 Регистрация (только для админа)
 router.post('/register', async (req, res) => {
   let { login, password, name, is_admin, role } = req.body
-role = role || 'Холодник' // значение по умолчанию
+  role = role || 'Холодник'
   try {
     const hashed = await bcrypt.hash(password, 10)
     const result = await pool.query(
-      'INSERT INTO users (login, password_hash, name, is_admin, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, balance, role',
+      `INSERT INTO users (login, password_hash, name, is_admin, role)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, name, balance, role`,
       [login, hashed, name, is_admin || false, role]
     )
     res.status(201).json({ user: result.rows[0] })
@@ -42,28 +42,18 @@ role = role || 'Холодник' // значение по умолчанию
 // 🔐 Логин
 router.post('/login', async (req, res) => {
   const { login, password } = req.body
-
   try {
     const userResult = await pool.query('SELECT * FROM users WHERE login = $1', [login])
     const user = userResult.rows[0]
-
     if (!user) return res.status(400).json({ error: 'Пользователь не найден' })
 
     const isMatch = await bcrypt.compare(password, user.password_hash)
     if (!isMatch) return res.status(401).json({ error: 'Неверный пароль' })
 
-    const token = jwt.sign({ id: user.id, is_admin: user.is_admin }, process.env.JWT_SECRET, { expiresIn: '7d' })
-
+    const token = jwt.sign({ id: user.id, is_admin: user.is_admin }, SECRET, { expiresIn: '7d' })
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        balance: user.balance,
-        is_admin: user.is_admin,
-        avatar_url: user.avatar_url,
-        role: user.role
-      }
+      user: { id: user.id, name: user.name, balance: user.balance, is_admin: user.is_admin }
     })
   } catch (err) {
     console.error(err)
@@ -71,12 +61,13 @@ router.post('/login', async (req, res) => {
   }
 })
 
-
-// 👥 Получить всех пользователей (для админки)
-router.get('/users', auth, async (req, res) => {
+// 👥 Получить всех пользователей
+router.get('/users', auth, async (_req, res) => {
   try {
-    const result = await pool.query('SELECT id, name, balance, avatar_url, role FROM users ORDER BY created_at DESC')
-    res.json(result.rows) // 👈 важно: именно массив, как ждёт фронт
+    const result = await pool.query(
+      'SELECT id, login, name, balance, is_admin FROM users ORDER BY created_at DESC'
+    )
+    res.json(result.rows)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка получения пользователей' })
@@ -85,38 +76,45 @@ router.get('/users', auth, async (req, res) => {
 
 // 💸 Начисление коинов
 router.post('/users/:id/coins', auth, async (req, res) => {
-  const userId = req.params.id
+  const { id } = req.params
   const { amount } = req.body
   try {
-    await pool.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [amount, userId])
+    await pool.query('BEGIN')
+    await pool.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [amount, id])
     await pool.query(
-      'INSERT INTO transactions (user_id, amount, reason) VALUES ($1, $2, $3)',
-      [userId, amount, 'Начисление вручную']
+      'INSERT INTO transactions (user_id, amount, reason) VALUES ($1,$2,$3)',
+      [id, amount, 'Начисление админом']
     )
-    res.json({ message: 'Коины начислены' })
+    await pool.query('COMMIT')
+    res.sendStatus(204)
   } catch (err) {
+    await pool.query('ROLLBACK')
     console.error(err)
     res.status(500).json({ error: 'Ошибка начисления' })
   }
 })
 
 // 📦 Получить товары
-router.get('/items', auth, async (req, res) => {
+router.get('/items', auth, async (_req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM items ORDER BY created_at DESC')
-    res.json(result.rows) // 👈 опять же, просто массив
+    const r = await pool.query('SELECT * FROM items ORDER BY created_at DESC')
+    res.json(r.rows)
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Ошибка при получении товаров' })
   }
 })
 
-// ➕ Добавить товар
-router.post('/items', auth, async (req, res) => {
-  const { name, price, description, image_url } = req.body
+// ➕ Добавить товар  (URL **или** файл image)
+router.post('/items', auth, upload.single('image'), async (req, res) => {
+  const { name, price, description } = req.body
+  const image_url = req.file
+    ? `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`
+    : req.body.image_url || null
+
   try {
     await pool.query(
-      'INSERT INTO items (name, price, description, image_url) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO items (name, price, description, image_url) VALUES ($1,$2,$3,$4)',
       [name, price, description, image_url]
     )
     res.json({ message: 'Товар добавлен' })
@@ -136,6 +134,12 @@ router.delete('/items/:id', auth, async (req, res) => {
     res.status(500).json({ error: 'Ошибка удаления товара' })
   }
 })
+
+// 🛒 Покупка товара (осталось без изменений) ...
+// ……………………………………………………………… далее код файла как был  ………………………………………………………………
+
+module.exports = router
+
 
 // 🛒 Покупка товара
 router.post('/buy', auth, async (req, res) => {

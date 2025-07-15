@@ -1,39 +1,34 @@
 // src/index.js
+require('dotenv').config();               // переменные окружения
+
 const express = require('express');
-const dotenv = require('dotenv');
-const routes = require('./routes');
-const cors = require('cors');
+const cors    = require('cors');
+const path    = require('path');
+
+const routes  = require('./routes');
 
 console.log('TG_BOT_TOKEN =', process.env.TG_BOT_TOKEN);
 console.log('TG_CHAT_ID   =', process.env.TG_CHAT_ID);
 
+const app  = express();
+const PORT = process.env.PORT || 3000;
 
-
-
-
-// Загрузка переменных окружения из .env
-dotenv.config();
-
-const app = express();
-
-app.use(cors()); // ← обязательно до всех routes
+/* ───────── middlewares ───────── */
+app.use(cors());
 app.use(express.json());
 
-// Обязательно для разбора JSON в теле запроса
-app.use(express.json());
+/* раздаём загруженные картинки */
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Подключаем все маршруты под префиксом /api
-app.use('/api', require('./routes'));
+/* API-роуты */
+app.use('/api', routes);
 
-app.use('/uploads', express.static('uploads'))
+/* health-check */
+app.get('/', (_req, res) =>
+  res.send('✅ S-Coin backend работает!')
+);
 
-// Проверка что сервер жив
-app.get('/', (req, res) => {
-  res.send('✅ S-Coin backend работает!');
+/* start */
+app.listen(PORT, () => {
+  console.log(`🚀  Сервер запущен на порту ${PORT}`);
 });
-
-// Запуск сервера
-app.listen(process.env.PORT, () => {
-  console.log(`🚀 Сервер запущен на порту ${process.env.PORT}`);
-});
-
